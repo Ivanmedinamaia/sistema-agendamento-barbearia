@@ -1,0 +1,19 @@
+# Dependência do Node.js
+node_modules/
+
+#Variáveis de ambiente e informações privadas
+.env
+.env.local
+.env.*.local
+
+# Arquivos gerados pelo projeto
+dist/
+build/
+coverage/
+
+# Arquivos de log
+*.log
+npm-debug.log*
+
+#DS_Store
+Thumbs.db
