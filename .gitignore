@@ -17,3 +17,11 @@ npm-debug.log*
 
 #DS_Store
 Thumbs.db
+
+# Outros arquivos de ambiente
+.env.*
+!.env.example
+
+# Arquivos temporários
+*.tmp
+*.bak
