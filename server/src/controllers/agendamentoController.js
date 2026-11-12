@@ -12,8 +12,67 @@ const Barbeiro = require('../models/Barbeiro');
 //Importa o Schema de validação dos agendamentos
 const { cadastroAgendamentoSchema } = require('../validators/agendamentoValidator');
 
-// Define o fuso horário utilizado pela barbearia
-const FUSO_HORARIO = 'America/Boa_Vista';
+// Importa as regras de horário de funcionamento da barbearia
+const {
+    FUSO_HORARIO,
+    INTERVALO_MINUTOS,
+    PERIODOS_ATENDIMENTO,
+    formatarDataLocal,
+    validarHorarioAgendamento
+} = require('../utils/horarioAgendamento');
+
+// Mensagem retornada quando o horário já está ocupado
+const MENSAGEM_CONFLITO = 'Este barbeiro já possui um agendamento neste horário.';
+
+// Limites da paginação da listagem de agendamentos
+const LIMITE_PADRAO = 20;
+const LIMITE_MAXIMO = 100;
+
+// Valores aceitos nos filtros da listagem de agendamentos
+const PERIODOS_VALIDOS = ['proximos', 'anteriores'];
+const STATUS_VALIDOS = ['agendado', 'concluido', 'cancelado'];
+
+
+// Verifica se o barbeiro já possui um agendamento ativo que se sobrepõe
+// ao intervalo informado. O parâmetro ignorarId permite desconsiderar o
+// próprio agendamento durante uma atualização.
+const existeConflito = async ({ barbeiro, inicioDia, dataHora, dataHoraFim, ignorarId }) => {
+
+    // Busca os agendamentos ativos do barbeiro no mesmo dia
+    // que começam antes do término do novo atendimento
+    const filtro = {
+        barbeiro,
+        status: 'agendado',
+        dataHora: {
+            $gte: inicioDia,
+            $lt: dataHoraFim
+        }
+    };
+
+    if (ignorarId) {
+        filtro._id = { $ne: ignorarId };
+    }
+
+    const agendamentosExistentes = await Agendamento.find(filtro)
+        .populate('servico', 'duracaoMinutos');
+
+    // Verifica se algum agendamento existente termina depois do início do novo
+    return agendamentosExistentes.some(agendamento => {
+
+        // Considera conflito caso o serviço relacionado não exista mais
+        if (!agendamento.servico) {
+            return true;
+        }
+
+        // Calcula o horário de término do agendamento existente
+        const fimExistente = new Date(
+            agendamento.dataHora.getTime() +
+            agendamento.servico.duracaoMinutos * 60000
+        );
+
+        return fimExistente > dataHora;
+    });
+};
 
 
 // Cadastra um novo agendamento
@@ -33,7 +92,7 @@ const cadastrarAgendamento = async (req, res) => {
             // Busca o usuário autenticado pelo ID presente no token JWT
             const usuario = await Usuario.findById(req.usuario.id);
 
-            // Verifica se o uruário ainda existe no banco de dados
+            // Verifica se o usuário ainda existe no banco de dados
             if (!usuario) {
                 return res.status(404).json({
                     mensagem: 'Usuário não encontrado.'
@@ -63,130 +122,40 @@ const cadastrarAgendamento = async (req, res) => {
             // Obtém a data e o horário informados pelo cliente
             const dataHora = new Date(req.body.dataHora);
 
-            // Verifica se a data é válida e se está no futuro
-            if (isNaN(dataHora.getTime()) || dataHora <= new Date()) {
+            // Valida dia, expediente, almoço e intervalo de 20 minutos
+            const horario = validarHorarioAgendamento(dataHora, servico.duracaoMinutos);
+
+            if (horario.erro) {
                 return res.status(400).json({
-                    mensagem: 'Não é possível realizar agendamentos em datas ou horários passados ou inválidos.'
+                    mensagem: horario.erro
                 });
             }
 
-            // Calcula o horário de término do atendimento
-
-            const dataHoraFim = new Date(
-                dataHora.getTime() + servico.duracaoMinutos*60000
-            );
-
-            // Converte as datas para o fuso horário da barbearia
-            const dataHoraLocal = toZonedTime(dataHora, FUSO_HORARIO);
-            const dataHoraFimLocal = toZonedTime(dataHoraFim, FUSO_HORARIO);
-
-            // Obtém a data local do agendamento no formato YYYY-MM-DD
-            const dataLocal = [
-                dataHoraLocal.getFullYear(),
-                String(dataHoraLocal.getMonth() + 1).padStart(2, '0'),
-                String(dataHoraLocal.getDate()).padStart(2, '0')
-            ].join('-');
-
-            // Obtém o início do dia no fuso horário da barbearia
-            const inicioDia = fromZonedTime(
-                `${dataLocal}T00:00:00`,
-                FUSO_HORARIO
-            );
-
-            // Obtém o dia da semana e os horários de atendimento
-            const diaSemana = dataHoraLocal.getDay();
-            const horaInicio = dataHoraLocal.getHours()*60 + dataHoraLocal.getMinutes();
-            const horaFim = dataHoraFimLocal.getHours()*60 + dataHoraFimLocal.getMinutes();
-
-            // Verifica se o horário de início respeita intervalos de 20 minutos
-            if(
-                horaInicio%20 !== 0 ||
-                dataHoraLocal.getSeconds() !== 0 ||
-                dataHoraLocal.getMilliseconds() !==0
-            ){
-                return res.status(400).json({
-                    mensagem: 'Os agendamentos devem começar em intervalos de 20 minutos.'
-                });
-            }
-
-            // Define os limites do expediente em minutos
-            const inicioExpediente = 8*60;
-            const inicioAlmoco = 12*60;
-            const fimAlmoco = 13*60;
-            const fimExpediente = 18*60;
-
-            //Verifica se a barbearia está fechada no dia informado
-            if (diaSemana === 0) {
-                return res.status(400).json({
-                    mensagem: 'A barbearia não funciona aos domingos.'
-                });
-            }
-
-            // Verifica se o atendimento está dentro do expediente
-            if (horaInicio < inicioExpediente || horaFim > fimExpediente) {
-                return res.status(400).json({
-                    mensagem: 'O atendimento deve ocorrer entre as 08h e 18h.'
-                });
-            }
-
-            // Verifica se o atendimento invade o intervalo de almoço
-            if(horaInicio < fimAlmoco && horaFim > inicioAlmoco) {
-                return res.status(400).json({
-                    mensagem: 'Não são permitidos atendimentos entre 12h e 13h.'
-                });
-            }
-
-
-
-
-            // Busca os agendamentos ativos do mesmo barbeiro
-            // que começam antes do término do novo atendimento
-            const agendamentosExistentes = await Agendamento.find({
-                barbeiro: req.body.barbeiro,
-                status: 'agendado',
-                dataHora: {
-                    $gte: inicioDia,
-                    $lt: dataHoraFim
-                }
-            }).populate('servico', 'duracaoMinutos');
-
-            //Verifica se algum agendamento existente ocupa o horário desejado
-            const conflito = agendamentosExistentes.some(agendamento => {
-
-                // Verifica se o serviço relacionado ao agendamento existe
-                if (!agendamento.servico) {
-                    return true;
-                }
-
-                // Obtém o horário de início do agendamento existente
-                const inicioExistente = new Date(agendamento.dataHora);
-
-                // Calcula o horário de início do agendamento existente
-                const fimExistente = new Date(
-                    inicioExistente.getTime() + 
-                    agendamento.servico.duracaoMinutos*60000
-                );
-
-                // Verifica se existe sobreposição entre os atendimentos
-                return fimExistente > dataHora;
-
-
+            // Verifica se o barbeiro já está ocupado no horário desejado
+            const conflito = await existeConflito({
+                barbeiro: barbeiro._id,
+                inicioDia: horario.inicioDia,
+                dataHora,
+                dataHoraFim: horario.dataHoraFim
             });
 
             // Impede o agendamento caso exista conflito
             if(conflito) {
                 return res.status(409).json({
-                    mensagem: 'Este barbeiro já possui um agendamento neste horário.'
+                    mensagem: MENSAGEM_CONFLITO
                 });
             }
 
-            // Cria o agendamento no banco de dados
+            // Cria o agendamento no banco de dados.
+            // O índice único de horariosOcupados garante que duas requisições
+            // simultâneas não consigam reservar o mesmo horário.
             const agendamento = await Agendamento.create({
                 usuario: usuario._id,
                 servico: servico._id,
                 barbeiro: barbeiro._id,
                 dataHora: dataHora,
-                status: 'agendado'
+                status: 'agendado',
+                horariosOcupados: horario.horariosOcupados
             });
 
             // Retorna a confirmação do agendamento
@@ -203,7 +172,14 @@ const cadastrarAgendamento = async (req, res) => {
             });
 
         }catch (erro) {
-            
+
+            // Outro agendamento ocupou o horário ao mesmo tempo
+            if (erro.code === 11000) {
+                return res.status(409).json({
+                    mensagem: MENSAGEM_CONFLITO
+                });
+            }
+
             // Registra o erro no console
             console.error('Erro ao cadastrar agendamento:', erro);
 
@@ -214,25 +190,75 @@ const cadastrarAgendamento = async (req, res) => {
 
 };
 
-// Lista os agendamentos
+// Lista os agendamentos com paginação e filtros opcionais
+// (?pagina=1&limite=20&periodo=proximos|anteriores&status=agendado|concluido|cancelado)
 const listarAgendamentos = async (req, res) => {
     try {
+
+        const { periodo, status } = req.query;
+
+        // Verifica se os filtros informados são válidos
+        if (periodo !== undefined && !PERIODOS_VALIDOS.includes(periodo)) {
+            return res.status(400).json({
+                mensagem: 'Período inválido. Use proximos ou anteriores.'
+            });
+        }
+
+        if (status !== undefined && !STATUS_VALIDOS.includes(status)) {
+            return res.status(400).json({
+                mensagem: 'Status inválido. Use agendado, concluido ou cancelado.'
+            });
+        }
 
         // Define o filtro de acordo com o tipo de usuário
         const filtro = req.usuario.tipo === 'admin'
             ? {}
             : { usuario: req.usuario.id };
 
-        // Busca os agendamentos no banco de dados
-        const agendamentos = await Agendamento.find(filtro)
-            .populate('usuario', 'nome email')
-            .populate('servico', 'nome preco duracaoMinutos')
-            .populate('barbeiro', 'nome especialidade')
-            .sort({ dataHora: 1});
+        // Aplica o filtro de status
+        if (status) {
+            filtro.status = status;
+        }
+
+        // Próximos: do mais cedo para o mais tarde.
+        // Anteriores: do mais recente para o mais antigo.
+        let ordem = 1;
+
+        if (periodo === 'proximos') {
+            filtro.dataHora = { $gte: new Date() };
+        }
+
+        if (periodo === 'anteriores') {
+            filtro.dataHora = { $lt: new Date() };
+            ordem = -1;
+        }
+
+        // Obtém a página e o limite informados, respeitando os valores permitidos
+        const pagina = Math.max(parseInt(req.query.pagina, 10) || 1, 1);
+        const limite = Math.min(
+            Math.max(parseInt(req.query.limite, 10) || LIMITE_PADRAO, 1),
+            LIMITE_MAXIMO
+        );
+
+        // Busca o total e a página de agendamentos no banco de dados
+        const [total, agendamentos] = await Promise.all([
+            Agendamento.countDocuments(filtro),
+            Agendamento.find(filtro)
+                .populate('usuario', 'nome email')
+                .populate('servico', 'nome preco duracaoMinutos')
+                .populate('barbeiro', 'nome especialidade')
+                .sort({ dataHora: ordem })
+                .skip((pagina - 1) * limite)
+                .limit(limite)
+        ]);
 
         // Retorna os agendamentos encontrados
         return res.status(200).json({
             quantidade: agendamentos.length,
+            total,
+            pagina,
+            limite,
+            totalPaginas: Math.ceil(total / limite),
             agendamentos
         });
     } catch (erro) {
@@ -258,7 +284,7 @@ const buscarAgendamentoPorId = async (req, res) => {
                 mensagem: 'Id do agendamento inválido.'
             });
         }
-        
+
         // Define o filtro de acordo com o tipo de usuário
         const filtro = req.usuario.tipo === 'admin'
             ? { _id: id}
@@ -270,7 +296,7 @@ const buscarAgendamentoPorId = async (req, res) => {
         .populate('servico', 'nome preco duracaoMinutos')
         .populate('barbeiro', 'nome especialidade');
 
-        // Verifica se o agendamento existe e percente ao usuário
+        // Verifica se o agendamento existe e pertence ao usuário
         if (!agendamento) {
             return res.status(404).json({
                 mensagem: 'Agendamento não encontrado.'
@@ -282,7 +308,7 @@ const buscarAgendamentoPorId = async (req, res) => {
         return res.status(200).json({
             agendamento
         });
-        
+
     } catch (erro) {
 
         // Registra o erro no console
@@ -296,7 +322,7 @@ const buscarAgendamentoPorId = async (req, res) => {
 
 // Cancela um agendamento
 const cancelarAgendamento = async (req, res) => {
-    
+
     try {
 
         // Obtém o ID informado na URL
@@ -337,7 +363,7 @@ const cancelarAgendamento = async (req, res) => {
             mensagem: 'Agendamento cancelado com sucesso.',
             agendamento
         });
-        
+
 
     } catch (erro) {
 
@@ -350,7 +376,57 @@ const cancelarAgendamento = async (req, res) => {
     }
 };
 
-// Atualiza um agendamento exitente
+// Marca um agendamento como concluído (somente administrador)
+const concluirAgendamento = async (req, res) => {
+
+    try {
+
+        // Obtém o ID informado na URL
+        const { id } = req.params;
+
+        // Verifica se o ID possui um formato válido
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({
+                mensagem: 'ID do agendamento inválido.'
+            });
+        }
+
+        // Só é possível concluir um atendimento agendado que já começou
+        const agendamento = await Agendamento.findOneAndUpdate(
+            {
+                _id: id,
+                status: 'agendado',
+                dataHora: { $lte: new Date() }
+            },
+            { status: 'concluido' },
+            { returnDocument: 'after' }
+        );
+
+        // Verifica se o agendamento foi encontrado e concluído
+        if (!agendamento) {
+            return res.status(404).json({
+                mensagem: 'Agendamento não encontrado, já finalizado ou ainda não iniciado.'
+            });
+        }
+
+        // Retorna a confirmação da conclusão
+        return res.status(200).json({
+            mensagem: 'Agendamento concluído com sucesso.',
+            agendamento
+        });
+
+    } catch (erro) {
+
+        // Registra o erro no console
+        console.error('Erro ao concluir agendamento:', erro);
+
+        return res.status(500).json({
+            mensagem: 'Erro interno ao concluir agendamento.'
+        });
+    }
+};
+
+// Atualiza um agendamento existente
 const atualizarAgendamento = async (req, res) => {
     try{
         // Obtém o ID do agendamento informado na URL
@@ -366,7 +442,7 @@ const atualizarAgendamento = async (req, res) => {
         // Define o filtro de acordo com o tipo de usuário
         const filtro = req.usuario.tipo === 'admin'
             ? { _id: id, status: 'agendado'}
-            : { 
+            : {
                 _id: id,
                 usuario: req.usuario.id,
                 status: 'agendado'
@@ -409,124 +485,36 @@ const atualizarAgendamento = async (req, res) => {
         // Verifica se o barbeiro existe e está disponível
         if(!barbeiro || !barbeiro.ativo){
             return res.status(404).json({
-                mensagem: 'Barbeiro não encontrado ou indisponivel.'
+                mensagem: 'Barbeiro não encontrado ou indisponível.'
             });
         }
 
         // Obtém a nova data e o horário informados pelo cliente
         const dataHora = new Date(req.body.dataHora);
 
-        // Verifica se a nova data é válida e está no futuro
-        if(isNaN(dataHora.getTime()) || dataHora <= new Date()) {
+        // Valida dia, expediente, almoço e intervalo de 20 minutos
+        const horario = validarHorarioAgendamento(dataHora, servico.duracaoMinutos);
+
+        if (horario.erro) {
             return res.status(400).json({
-                mensagem: 'Não é possível remarcar para datas ou horários passados ou inválidos.'
+                mensagem: horario.erro
             });
         }
 
-        // Calcula o horário de término do novo atendimento
-        const dataHoraFim =  new Date(
-            dataHora.getTime() + servico.duracaoMinutos*60000
-
-        );
-
-        // Converte as datas para o fuso horário da barbearia
-        const dataHoraLocal = toZonedTime(dataHora, FUSO_HORARIO);
-        const dataHoraFimLocal = toZonedTime(dataHoraFim, FUSO_HORARIO);
-
-        // Obtém a data local do agendamento no formato YYYY-MM-DD
-            const dataLocal = [
-                dataHoraLocal.getFullYear(),
-                String(dataHoraLocal.getMonth() + 1).padStart(2, '0'),
-                String(dataHoraLocal.getDate()).padStart(2, '0')
-            ].join('-');
-
-            // Obtém o início do dia no fuso horário da barbearia
-            const inicioDia = fromZonedTime(
-                `${dataLocal}T00:00:00`,
-                FUSO_HORARIO
-            );
-
-        // Obtém o dia da semana e os horários de atendimento.
-        const diaSemana = dataHoraLocal.getDay();
-        const horaInicio = dataHoraLocal.getHours()*60 + dataHoraLocal.getMinutes();
-        const horaFim = dataHoraFimLocal.getHours()*60 + dataHoraFimLocal.getMinutes();
-
-        // Verifica se o horário de início repeita intervalos de 20 minutos
-        if (
-            horaInicio%20 !== 0 ||
-            dataHoraLocal.getSeconds() !== 0 ||
-            dataHoraLocal.getMilliseconds() !== 0
-        ){
-            return res.status(400).json({
-                mensagem: 'Os agendamentos devem começar em intervalos de 20 minutos.'
-            });
-        }
-        
-        // Define os limites do expediente em minutos
-        const inicioExpediente = 8*60;
-        const inicioAlmoco = 12*60;
-        const fimAlmoco = 13*60;
-        const fimExpediente = 18*60;
-
-        // Verifica se a barbearia está fechada no dia informado
-        if (diaSemana === 0) {
-            return res.status(400).json({
-                mensagem: 'A barbearia não funciona aos domingos.'
-            });
-        }
-
-        // Verifica se o atendimento está dentro do expediente
-        if (horaInicio < inicioExpediente || horaFim > fimExpediente) {
-            return res.status(400).json({
-                mensagem: 'O atendimento deve ocorrer entre as 08h e 18h.'
-            });
-        }
-
-        // Verifica se o atendimento invade o intervalo de almoço
-        if(horaInicio < fimAlmoco && horaFim > inicioAlmoco) {
-            return res.status(400).json({
-                mensagem: 'Não são permitidos atendimentos entre 12h e 13h.'
-            });
-        }
-
-        // Busca os agendamentos ativos do novo barbeiro
-        // Excluindo o próprio agendamento que está sendo atualizado
-
-        const agendamentosExistentes = await Agendamento.find({
-            _id: { $ne: id },
-            barbeiro: req.body.barbeiro,
-            status: 'agendado',
-            dataHora: {
-                $gte: inicioDia,
-                $lt: dataHoraFim
-            }
-        }).populate('servico', 'duracaoMinutos');
-
-        // Verifica se algum agendamento existente ocupa o horário desejado
-        const conflito = agendamentosExistentes.some(agendamento => {
-
-            // Verifica se o serviço relacionado ao agendamento existe
-            if (!agendamento.servico) {
-                return true;
-            }
-
-            // Obtém o horário de início do agendamento existente
-            const inicioExistente = new Date(agendamento.dataHora);
-
-            // Calcula o horário de término do agendamento existente
-            const fimExistente = new Date(inicioExistente.getTime() + 
-            agendamento.servico.duracaoMinutos*60000
-        );
-
-        // verifica se existe sobreposição entre os atendimentos
-        return fimExistente > dataHora;
-        
+        // Verifica conflitos com outros agendamentos do novo barbeiro,
+        // desconsiderando o próprio agendamento que está sendo atualizado
+        const conflito = await existeConflito({
+            barbeiro: barbeiro._id,
+            inicioDia: horario.inicioDia,
+            dataHora,
+            dataHoraFim: horario.dataHoraFim,
+            ignorarId: id
         });
 
         // Impede a atualização caso exista conflito
         if (conflito){
             return res.status(409).json({
-                mensagem: 'Este barbeiro já possui um agendamento neste horário.'
+                mensagem: MENSAGEM_CONFLITO
             });
         }
 
@@ -536,7 +524,8 @@ const atualizarAgendamento = async (req, res) => {
             {
                 servico: servico._id,
                 barbeiro: barbeiro._id,
-                dataHora: dataHora
+                dataHora: dataHora,
+                horariosOcupados: horario.horariosOcupados
             },
 
             {
@@ -559,6 +548,14 @@ const atualizarAgendamento = async (req, res) => {
         });
 
     } catch(erro) {
+
+        // Outro agendamento ocupou o horário ao mesmo tempo
+        if (erro.code === 11000) {
+            return res.status(409).json({
+                mensagem: MENSAGEM_CONFLITO
+            });
+        }
+
         // Registra o erro no console
         console.error('Erro ao atualizar o agendamento:', erro);
 
@@ -573,8 +570,10 @@ const atualizarAgendamento = async (req, res) => {
 const consultarDisponibilidade = async (req, res) => {
 
     try {
-        // Obtém os parâmetros enviados pela URL
-        const { barbeiro, servico, data } = req.query;
+        // Obtém os parâmetros enviados pela URL.
+        // "ignorar" é opcional: na remarcação, desconsidera o próprio
+        // agendamento para que o horário atual apareça como livre.
+        const { barbeiro, servico, data, ignorar } = req.query;
 
         // Verifica se todos os parâmetros foram informados
         if (!barbeiro || !servico || !data) {
@@ -586,10 +585,11 @@ const consultarDisponibilidade = async (req, res) => {
         // Verifica se os IDs possuem formato válido
         if (
             !mongoose.Types.ObjectId.isValid(barbeiro) ||
-            !mongoose.Types.ObjectId.isValid(servico)
+            !mongoose.Types.ObjectId.isValid(servico) ||
+            (ignorar !== undefined && !mongoose.Types.ObjectId.isValid(ignorar))
         ) {
             return res.status(400).json({
-                mensagem: 'ID do barbeiro ou serviço inválido.'
+                mensagem: 'ID do barbeiro, serviço ou agendamento inválido.'
             });
         }
 
@@ -622,15 +622,10 @@ const consultarDisponibilidade = async (req, res) => {
             });
         }
 
-        // Obtém a data e hora atual no fuso horário de Boa Vista
-        const agoraLocal = toZonedTime(new Date(), FUSO_HORARIO);
-
-        // Monta a data atual no formato YYYY-MM-DD
-        const dataAtual = [
-            agoraLocal.getFullYear(),
-            String(agoraLocal.getMonth() + 1).padStart(2, '0'),
-            String(agoraLocal.getDate()).padStart(2, '0')
-        ].join('-');
+        // Obtém a data atual no fuso horário da barbearia (YYYY-MM-DD)
+        const dataAtual = formatarDataLocal(
+            toZonedTime(new Date(), FUSO_HORARIO)
+        );
 
         // Impede a consulta de datas anteriores à data atual
         if (data < dataAtual) {
@@ -663,7 +658,7 @@ const consultarDisponibilidade = async (req, res) => {
             });
         }
 
-        // Converte o início e o fim do dia para o fuso de Boa Vista
+        // Converte o início e o fim do dia para o fuso da barbearia
         const inicioDia = fromZonedTime(
             `${data}T00:00:00`,
             FUSO_HORARIO
@@ -678,20 +673,21 @@ const consultarDisponibilidade = async (req, res) => {
         );
 
         // Busca os agendamentos ativos do barbeiro na data consultada
-        const agendamentosExistentes = await Agendamento.find({
+        const filtroAgendamentos = {
             barbeiro: barbeiro,
             status: 'agendado',
             dataHora: {
                 $gte: inicioDia,
                 $lt: fimDia
             }
-        }).populate('servico', 'duracaoMinutos');
+        };
 
-        // Define os períodos de funcionamento em minutos
-        const periodos = [
-            { inicio: 8 * 60, fim: 12 * 60 },
-            { inicio: 13 * 60, fim: 18 * 60 }
-        ];
+        if (ignorar) {
+            filtroAgendamentos._id = { $ne: ignorar };
+        }
+
+        const agendamentosExistentes = await Agendamento.find(filtroAgendamentos)
+            .populate('servico', 'duracaoMinutos');
 
         // Obtém a duração do serviço
         const duracao = servicoEncontrado.duracaoMinutos;
@@ -703,13 +699,13 @@ const consultarDisponibilidade = async (req, res) => {
         const horariosDisponiveis = [];
 
         // Percorre os períodos de funcionamento
-        for (const periodo of periodos) {
+        for (const periodo of PERIODOS_ATENDIMENTO) {
 
             // Percorre os horários em intervalos de 20 minutos
             for (
                 let minuto = periodo.inicio;
                 minuto + duracao <= periodo.fim;
-                minuto += 20
+                minuto += INTERVALO_MINUTOS
             ) {
                 // Separa hora e minuto
                 const hora = String(Math.floor(minuto / 60)).padStart(2, '0');
@@ -734,7 +730,7 @@ const consultarDisponibilidade = async (req, res) => {
                 // Verifica se existe conflito com outro agendamento
                 const conflito = agendamentosExistentes.some(agendamento => {
 
-                    // Ignora registros sem serviço relacionado
+                    // Considera conflito caso o serviço relacionado não exista mais
                     if (!agendamento.servico) {
                         return true;
                     }
@@ -789,6 +785,7 @@ module.exports = {
     listarAgendamentos,
     buscarAgendamentoPorId,
     cancelarAgendamento,
+    concluirAgendamento,
     atualizarAgendamento,
     consultarDisponibilidade
 };

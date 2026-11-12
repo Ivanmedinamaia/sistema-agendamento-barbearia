@@ -26,6 +26,14 @@ const errorMiddleware = require('./middlewares/errorMiddleware');
 // Cria a aplicação Express
 const app = express();
 
+// Informa ao Express quantos proxies existem na frente da API
+// (ex.: TRUST_PROXY=1 no Render ou Railway). Sem isso, atrás de um proxy,
+// o rate limit enxergaria todos os clientes com o mesmo IP.
+if (process.env.TRUST_PROXY) {
+    const proxies = Number(process.env.TRUST_PROXY);
+    app.set('trust proxy', Number.isNaN(proxies) ? process.env.TRUST_PROXY : proxies);
+}
+
 // configura os cabeçalhos HTTP de segurança
 app.use(helmet());
 

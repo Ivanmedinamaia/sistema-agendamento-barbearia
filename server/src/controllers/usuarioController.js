@@ -10,6 +10,11 @@ const bcrypt = require('bcrypt');
 // Importa a biblioteca responsável pela geração de token JWT
 const jwt = require('jsonwebtoken');
 
+// Hash fictício usado quando o email não existe. Assim o login leva o mesmo
+// tempo para emails cadastrados e não cadastrados, o que impede descobrir
+// quais emails existem no sistema medindo o tempo de resposta.
+const HASH_FICTICIO = bcrypt.hashSync('senha-ficticia-para-tempo-constante', 12);
+
 // Função responsável por casdatrar um usuário
 const cadastrarUsuario = async (req, res) => {
     try {
@@ -59,7 +64,14 @@ const cadastrarUsuario = async (req, res) => {
         });
 
     } catch (erro){
-        // Registra o erro no terinal do servidor
+        // Outro cadastro com o mesmo email foi concluído ao mesmo tempo
+        if (erro.code === 11000) {
+            return res.status(409).json({
+                mensagem: 'Este email já está cadastrado.'
+            });
+        }
+
+        // Registra o erro no terminal do servidor
         console.error('Erro ao cadastrar usuário', erro);
 
         // Retorna uma mensagem genérica ao cliente
@@ -88,18 +100,16 @@ const loginUsuario = async (req, res) => {
         // 3. Procura o usuário pelo email no banco de dados
         const usuario = await Usuario.findOne({ email }).select('+senha');
 
-        // Se o usuário não existir, retorna uma mensagem de erro
-        if(!usuario){
-            return res.status(401).json({
-                mensagem: 'Email ou senha inválidos.'
-            });
-        }
+        // 4. Compara a senha informada com o hash armazenado.
+        // Se o usuário não existir, compara com o hash fictício para
+        // manter o mesmo tempo de resposta.
+        const senhaCorreta = await bcrypt.compare(
+            senha,
+            usuario ? usuario.senha : HASH_FICTICIO
+        );
 
-        // 4. Compara a senha informada com o hash armazenado
-        const senhaCorreta = await bcrypt.compare(senha, usuario.senha);
-        
-        // Se a senha estiver incorreta, retorna uma mensagem de erro
-        if(!senhaCorreta) {
+        // Se o usuário não existir ou a senha estiver incorreta, retorna erro
+        if(!usuario || !senhaCorreta) {
             return res.status(401).json({
                 mensagem: 'Email ou senha inválidos.'
             });

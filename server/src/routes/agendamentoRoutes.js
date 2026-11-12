@@ -4,8 +4,9 @@ const router = express.Router();
 // Importa as funções do controller
 const agendamentoController = require('../controllers/agendamentoController');
 
-// Importa o middleware de autenticação
+// Importa os middlewares de autenticação e autorização
 const autenticarUsuario = require('../middlewares/authMiddleware');
+const autorizarAdmin = require('../middlewares/autorizarAdmin');
 
 // Cadastrar um novo agendamento (somente usuário autenticados)
 router.post(
@@ -40,6 +41,14 @@ router.patch(
     '/:id/cancelar',
     autenticarUsuario,
     agendamentoController.cancelarAgendamento
+);
+
+// Marca um agendamento como concluído (somente administrador)
+router.patch(
+    '/:id/concluir',
+    autenticarUsuario,
+    autorizarAdmin,
+    agendamentoController.concluirAgendamento
 );
 
 // Atualiza um agendamento existente
