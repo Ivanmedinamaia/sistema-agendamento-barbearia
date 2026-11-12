@@ -8,7 +8,7 @@ export default defineConfig({
         // Em desenvolvimento, as chamadas para /api são encaminhadas ao backend.
         // Assim o navegador fala só com o Vite e não há problema de CORS.
         proxy: {
-            '/api': 'http://localhost:3000'
+            '/api': process.env.API_URL || 'http://localhost:3000'
         }
     }
 });

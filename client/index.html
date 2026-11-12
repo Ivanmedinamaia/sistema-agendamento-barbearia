@@ -5,6 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Agende seu horário na barbearia." />
     <title>Barbearia | Agendamentos</title>
+    <script>
+      // Aplica o tema antes da primeira pintura: preferência salva ou a do sistema
+      (function () {
+        var tema;
+        try { tema = localStorage.getItem('tema'); } catch (e) {}
+        if (tema !== 'claro' && tema !== 'escuro') {
+          tema = matchMedia('(prefers-color-scheme: dark)').matches ? 'escuro' : 'claro';
+        }
+        document.documentElement.dataset.tema = tema;
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap"
+    />
   </head>
   <body>
     <div id="root"></div>

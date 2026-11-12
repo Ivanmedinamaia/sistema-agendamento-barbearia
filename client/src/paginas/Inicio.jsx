@@ -17,21 +17,30 @@ export default function Inicio() {
     return (
         <>
             <section className="destaque">
-                <h1>Seu horário marcado, sem fila e sem espera.</h1>
-                <p>
-                    Escolha o serviço, o barbeiro e o horário que preferir. Atendemos de segunda a
-                    sábado, das 08h às 18h.
-                </p>
-                <div className="acoes">
-                    <Link to={chamada.destino} className="botao botao-grande">
-                        {chamada.texto}
-                    </Link>
-                    {!usuario && (
-                        <Link to="/login" className="botao botao-grande botao-secundario">
-                            Já tenho conta
+                <div className="destaque-texto">
+                    <span className="sobretitulo">Agendamento online</span>
+                    <h1>Seu horário marcado, sem fila e sem espera.</h1>
+                    <p>
+                        Escolha o serviço, o barbeiro e o horário que preferir. Atendemos de segunda a
+                        sábado, das 08h às 18h.
+                    </p>
+                    <div className="acoes">
+                        <Link to={chamada.destino} className="botao botao-grande">
+                            {chamada.texto}
                         </Link>
-                    )}
+                        {!usuario && (
+                            <Link to="/login" className="botao botao-grande botao-secundario">
+                                Já tenho conta
+                            </Link>
+                        )}
+                    </div>
+                    <ul className="destaque-info">
+                        <li>Segunda a sábado</li>
+                        <li>08h às 18h</li>
+                        <li>Horários a cada 20 min</li>
+                    </ul>
                 </div>
+                <div className="poste" aria-hidden="true" />
             </section>
 
             <section className="secao" aria-labelledby="titulo-servicos">
@@ -47,7 +56,7 @@ export default function Inicio() {
                             <h3>{servico.nome}</h3>
                             <p>{servico.descricao}</p>
                             <div className="item-detalhes">
-                                <span className="texto-suave">{formatarDuracao(servico.duracaoMinutos)}</span>
+                                <span className="duracao">{formatarDuracao(servico.duracaoMinutos)}</span>
                                 <span className="preco">{formatarPreco(servico.preco)}</span>
                             </div>
                         </article>
