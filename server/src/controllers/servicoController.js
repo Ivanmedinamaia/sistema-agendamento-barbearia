@@ -134,9 +134,9 @@ const atualizarServico = async (req, res) => {
             });
         }
 
-        // Atualiza o serviço no MongoDB
-        const servicoAtualizado = await Servico.findByIdAndUpdate(
-            id,
+        // Atualiza somente serviços ativos no MongoDB
+        const servicoAtualizado = await Servico.findOneAndUpdate(
+            { _id: id, ativo: true },
             value,
             {
                 returnDocument: 'after',
@@ -181,8 +181,8 @@ const excluirServico = async (req, res) => {
 
     try {
         // Localiza o serviço e realiza a sua desativação
-        const servicoDesativado = await Servico.findByIdAndUpdate(
-            id,
+        const servicoDesativado = await Servico.findOneAndUpdate(
+            { _id: id, ativo: true },
             { ativo: false },
             { returnDocument: 'after' }
         );

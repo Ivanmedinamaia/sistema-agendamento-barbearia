@@ -1,6 +1,18 @@
 // Carregar as variáveis do arquivo .env
 require('dotenv').config();
 
+// Verifica se as variáveis de ambiente obrigatórias foram configuradas
+const variaveisObrigatorias = ['MONGODB_URI', 'JWT_SECRET'];
+const variaveisAusentes = variaveisObrigatorias.filter(nome => !process.env[nome]);
+
+if (variaveisAusentes.length > 0) {
+    console.error(
+        `Variáveis de ambiente obrigatórias não configuradas: ${variaveisAusentes.join(', ')}. ` +
+        'Consulte o arquivo .env.example.'
+    );
+    process.exit(1);
+}
+
 // Importa a aplicação Express
 const app = require('./src/app');
 

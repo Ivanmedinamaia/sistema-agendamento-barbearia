@@ -9,6 +9,14 @@ const { cadastroBarbeiroSchema,
         atualizarBarbeiroSchema
         } = require('../validators/barbeiroValidator');
 
+// Campos exibidos para visitantes e clientes.
+// Email e telefone dos barbeiros ficam visíveis apenas para administradores.
+const CAMPOS_PUBLICOS = 'nome especialidade ativo';
+
+// Define os campos retornados de acordo com o tipo de usuário
+const camposVisiveis = (req) =>
+    req.usuario?.tipo === 'admin' ? {} : CAMPOS_PUBLICOS;
+
 // Cadastra um novo barbeiro
 const cadastrarBarbeiro = async (req, res) => {
 
@@ -78,7 +86,8 @@ const listarBarbeiros = async (req, res) => {
 
     try{
         // Busca todos os barbeiros cadastrados
-        const barbeiros = await Barbeiro.find({ ativo: true });
+        const barbeiros = await Barbeiro.find({ ativo: true })
+            .select(camposVisiveis(req));
 
         // Retorna a quantidade e os dados encontrados
         return res.status(200).json({
@@ -113,7 +122,7 @@ const buscarBarbeiroPorId = async (req, res) => {
         const barbeiro = await Barbeiro.findOne({
             _id: id,
             ativo: true
-        });
+        }).select(camposVisiveis(req));
 
         // Verifica se o barbeiro foi encontrado
         if(!barbeiro) {
