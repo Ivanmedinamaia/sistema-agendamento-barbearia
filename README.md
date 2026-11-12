@@ -187,9 +187,24 @@ atual dele apareça como livre.
 
 ## Testes
 
+Dentro da pasta `server`:
+
 ```bash
 npm test
 ```
+
+São 46 testes em dois grupos:
+
+- **Regras de horário** (`test/horarioAgendamento.test.js`): expediente, almoço, domingos,
+  intervalos de 20 minutos e atendimentos que passariam da meia-noite.
+- **API** (`test/api.test.js`): requisições HTTP reais contra um MongoDB em memória,
+  cobrindo cadastro e login, limite de tentativas, permissões de cliente e administrador,
+  serviços, barbeiros e todo o ciclo dos agendamentos, incluindo 20 reservas simultâneas
+  do mesmo horário.
+
+Os testes não usam o banco do `.env`. Na primeira execução, o MongoDB de teste
+(cerca de 70 MB) é baixado para `~/.cache/mongodb-binaries`; nas seguintes, a suíte
+roda em poucos segundos.
 
 ## Verificação da API
 
