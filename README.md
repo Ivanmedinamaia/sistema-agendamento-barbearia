@@ -111,13 +111,19 @@ TRUST_PROXY=
 (por exemplo, `1` no Render ou Railway), para que o limite de tentativas de login
 identifique o IP real de cada cliente.
 
-**4.** Inicie o servidor:
+**4.** Inicie o servidor em modo de desenvolvimento:
 
 ```bash
-npm start
+npm run dev
 ```
 
-Durante o desenvolvimento, use `npm run dev` para reiniciar o servidor automaticamente a cada alteração.
+Se o `MONGODB_URI` apontar para um MongoDB local (por exemplo, `mongodb://localhost:27017/barbearia`)
+que não esteja rodando, o `npm run dev` sobe um automaticamente, sem precisar instalar o MongoDB.
+Os dados ficam em `~/.barbearia-agendamento/mongodb` e continuam lá entre as execuções. Na primeira
+vez, o MongoDB (cerca de 70 MB) é baixado para `~/.cache/mongodb-binaries`. O `npm run dev` também
+reinicia a API a cada alteração no código. Para parar, pressione `Ctrl + C`.
+
+Em produção, use `npm start`, que exige um MongoDB já disponível (por exemplo, o MongoDB Atlas).
 
 O backend estará disponível em:
 
@@ -151,6 +157,20 @@ informe o endereço da API em `VITE_API_URL` (veja `client/.env.example`). Lembr
 colocar o endereço do frontend em `FRONTEND_URL` no `.env` do backend.
 
 > No Windows, se o PowerShell bloquear o `npm`, use `npm.cmd` no lugar (por exemplo, `npm.cmd run dev`).
+
+## Dados de demonstração
+
+Para começar com serviços e barbeiros já cadastrados, dentro da pasta `server` e com o
+banco rodando (`npm run dev` em outro terminal), execute:
+
+```bash
+npm run popular-demo
+```
+
+São 10 serviços de barbearia (corte, degradê, barba, combo, corte infantil, acabamento,
+sobrancelha, pigmentação, hidratação e platinado) e 4 barbeiros fictícios, com emails no
+domínio reservado `example.com`. O comando pode ser executado mais de uma vez sem duplicar
+os dados.
 
 ## Criando um administrador
 
