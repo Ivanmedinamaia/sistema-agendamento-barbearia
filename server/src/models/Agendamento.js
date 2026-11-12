@@ -35,11 +35,17 @@ const agendamentoSchema = new mongoose.Schema({
         type: String,
         enum: ['agendado', 'concluido', 'cancelado'],
         default: 'agendado'
-    }
-    
-    
+    },
 
-    },   {    
+    // Blocos de 20 minutos ocupados pelo atendimento.
+    // Usados pelo índice único abaixo para impedir horários sobrepostos.
+    horariosOcupados: {
+        type: [Date],
+        default: undefined,
+        select: false
+    }
+
+    },   {
         // Registra automaticamente a criação e a atualização
         timestamps: true   
     });
@@ -58,6 +64,24 @@ const agendamentoSchema = new mongoose.Schema({
         usuario: 1,
         dataHora: 1
     });
+
+    // Índice único que impede que o mesmo barbeiro tenha dois agendamentos
+    // ativos ocupando o mesmo bloco de 20 minutos. Como a verificação é feita
+    // pelo próprio MongoDB, ela também vale para requisições simultâneas.
+    // Agendamentos cancelados ou concluídos ficam fora do índice.
+    agendamentoSchema.index(
+        {
+            barbeiro: 1,
+            horariosOcupados: 1
+        },
+        {
+            unique: true,
+            partialFilterExpression: {
+                status: 'agendado',
+                horariosOcupados: { $exists: true }
+            }
+        }
+    );
 
 
     // Cria o Model de Agendamento
