@@ -40,5 +40,22 @@ router.post('/', cadastroLimiter, usuarioController.cadastrarUsuario);
 // Define a rota de login de usuários
 router.post('/login', loginLimiter, usuarioController.loginUsuario);
 
+// Cria um limitador para as rotas de recuperação de senha
+const limitarRecuperacao = () => rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 5,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: {
+        mensagem: 'Muitas tentativas de recuperação de senha. Tente novamente em 15 minutos.'
+    }
+});
+
+// Envia o link de recuperação de senha por email
+router.post('/esqueci-senha', limitarRecuperacao(), usuarioController.esqueciSenha);
+
+// Cria a nova senha a partir do link recebido
+router.post('/redefinir-senha', limitarRecuperacao(), usuarioController.redefinirSenha);
+
 // Exporta as rotas
 module.exports = router;

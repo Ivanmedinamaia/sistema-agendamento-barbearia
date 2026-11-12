@@ -31,6 +31,18 @@ const usuarioSchema = new mongoose.Schema({
         type: String,
         enum: ['admin', 'usuario'],
         default: 'usuario'
+    },
+
+    // Hash do token de recuperação de senha (o token em si só vai no email)
+    resetSenhaHash: {
+        type: String,
+        select: false
+    },
+
+    // Data limite para usar o link de recuperação de senha
+    resetSenhaExpira: {
+        type: Date,
+        select: false
     }
 }, {
     // Registra automaticamente a data de criação e atualização

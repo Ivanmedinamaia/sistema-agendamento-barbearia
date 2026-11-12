@@ -6,6 +6,8 @@ import RotaProtegida from './componentes/RotaProtegida';
 import Inicio from './paginas/Inicio';
 import Login from './paginas/Login';
 import Cadastro from './paginas/Cadastro';
+import EsqueciSenha from './paginas/EsqueciSenha';
+import RedefinirSenha from './paginas/RedefinirSenha';
 import Agendar from './paginas/Agendar';
 import MeusAgendamentos from './paginas/MeusAgendamentos';
 import AdminAgendamentos from './paginas/admin/AdminAgendamentos';
@@ -31,6 +33,8 @@ export default function App() {
                         <Route index element={<Inicio />} />
                         <Route path="login" element={<Login />} />
                         <Route path="cadastro" element={<Cadastro />} />
+                        <Route path="esqueci-senha" element={<EsqueciSenha />} />
+                        <Route path="redefinir-senha" element={<RedefinirSenha />} />
 
                         <Route path="agendar" element={<RotaProtegida><Agendar /></RotaProtegida>} />
                         <Route path="agendar/:id" element={<RotaProtegida><Agendar /></RotaProtegida>} />

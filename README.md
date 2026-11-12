@@ -24,6 +24,7 @@ Projeto acadêmico de desenvolvimento Full Stack para gerenciamento de agendamen
 ## Funcionalidades do backend
 
 - Cadastro e autenticação de usuários.
+- Recuperação de senha por email, com link válido por 30 minutos.
 - Controle de acesso para administradores.
 - Cadastro, consulta, atualização e desativação de serviços.
 - Cadastro, consulta, atualização e desativação de barbeiros.
@@ -172,6 +173,18 @@ sobrancelha, pigmentação, hidratação e platinado) e 4 barbeiros fictícios, 
 domínio reservado `example.com`. O comando pode ser executado mais de uma vez sem duplicar
 os dados.
 
+## Recuperação de senha
+
+Na tela de login, o link **Esqueci minha senha** pede o email da conta. Se a conta existir,
+o sistema envia um link para criar uma nova senha, válido por 30 minutos e de uso único.
+
+- **Com SMTP configurado** no `.env` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` e
+  `EMAIL_REMETENTE`; veja `server/.env.example`), o email é enviado de verdade.
+- **Sem SMTP**, o email aparece no terminal do backend. Basta copiar o link de lá, o que
+  é suficiente para desenvolvimento e demonstração.
+
+O link usa o endereço de `FRONTEND_URL`, então ele precisa apontar para o site.
+
 ## Criando um administrador
 
 Cadastre o usuário normalmente pela rota `POST /api/usuarios` e depois, dentro da pasta `server`, execute:
@@ -188,6 +201,8 @@ O usuário precisa fazer login novamente para receber um token com a permissão 
 |---|---|---|
 | POST | `/api/usuarios` | Público (cadastro) |
 | POST | `/api/usuarios/login` | Público |
+| POST | `/api/usuarios/esqueci-senha` | Público (envia o link de recuperação) |
+| POST | `/api/usuarios/redefinir-senha` | Público (cria a nova senha com o token do link) |
 | GET | `/api/servicos`, `/api/servicos/:id` | Público |
 | POST, PUT, DELETE | `/api/servicos`, `/api/servicos/:id` | Administrador |
 | GET | `/api/barbeiros`, `/api/barbeiros/:id` | Público (email e telefone apenas para administradores) |
@@ -213,12 +228,12 @@ Dentro da pasta `server`:
 npm test
 ```
 
-São 46 testes em dois grupos:
+São 49 testes em dois grupos:
 
 - **Regras de horário** (`test/horarioAgendamento.test.js`): expediente, almoço, domingos,
   intervalos de 20 minutos e atendimentos que passariam da meia-noite.
 - **API** (`test/api.test.js`): requisições HTTP reais contra um MongoDB em memória,
-  cobrindo cadastro e login, limite de tentativas, permissões de cliente e administrador,
+  cobrindo cadastro e login, recuperação de senha, limite de tentativas, permissões de cliente e administrador,
   serviços, barbeiros e todo o ciclo dos agendamentos, incluindo 20 reservas simultâneas
   do mesmo horário.
 

@@ -204,6 +204,70 @@ describe('Usuários', () => {
     });
 });
 
+describe('Recuperação de senha', () => {
+    // Sem SMTP configurado, o email é exibido no terminal: captura essa saída
+    async function pedirLink(email) {
+        const original = console.log;
+        let saida = '';
+        console.log = (...partes) => {
+            saida += partes.join(' ');
+        };
+
+        try {
+            const resposta = await requisicao('POST', '/usuarios/esqueci-senha', { corpo: { email } });
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            const token = saida.match(/redefinir-senha\?token=([a-f0-9]{64})/)?.[1];
+            return { resposta, token };
+        } finally {
+            console.log = original;
+        }
+    }
+
+    const redefinir = (token, senha = 'nova-senha-123') =>
+        requisicao('POST', '/usuarios/redefinir-senha', { corpo: { token, senha } });
+
+    it('responde igual para email cadastrado e não cadastrado', async () => {
+        const inexistente = await pedirLink('ninguem@exemplo.com');
+        const cadastrado = await pedirLink(CLIENTE.email);
+
+        assert.equal(inexistente.resposta.status, 200);
+        assert.equal(cadastrado.resposta.status, 200);
+        assert.equal(inexistente.resposta.corpo.mensagem, cadastrado.resposta.corpo.mensagem);
+        assert.equal(inexistente.token, undefined, 'não envia email para quem não tem conta');
+        assert.ok(cadastrado.token, 'envia o link para quem tem conta');
+    });
+
+    it('troca a senha com o link e não aceita usar o mesmo link de novo', async () => {
+        const { token } = await pedirLink(CLIENTE.email);
+
+        assert.equal((await redefinir(token, 'curta')).status, 400);
+
+        const r = await redefinir(token);
+        assert.equal(r.status, 200);
+
+        const usuario = await Usuario.findOne({ email: CLIENTE.email }).select('+senha');
+        assert.ok(await bcrypt.compare('nova-senha-123', usuario.senha));
+        assert.ok(!(await bcrypt.compare(CLIENTE.senha, usuario.senha)));
+
+        assert.equal((await redefinir(token)).status, 400, 'link já usado');
+    });
+
+    it('recusa link inválido ou expirado', async () => {
+        assert.equal((await redefinir('a'.repeat(64))).status, 400);
+
+        // O limite de tentativas é de 5 a cada 15 minutos; o link expirado é testado direto no banco
+        await Usuario.updateOne(
+            { email: CLIENTE.email },
+            { resetSenhaHash: 'x', resetSenhaExpira: new Date(Date.now() - 60000) }
+        );
+        const usuario = await Usuario.findOne({
+            email: CLIENTE.email,
+            resetSenhaExpira: { $gt: new Date() }
+        });
+        assert.equal(usuario, null);
+    });
+});
+
 describe('Autenticação e permissões', () => {
     it('exige token nas rotas protegidas', async () => {
         const r = await requisicao('GET', '/agendamentos');

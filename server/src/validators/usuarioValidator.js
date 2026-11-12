@@ -63,8 +63,47 @@ const loginSchema = Joi.object({
             })
 }).unknown(false);
 
+// Define as regras do pedido de recuperação de senha
+const esqueciSenhaSchema = Joi.object({
+    email: Joi.string()
+        .email()
+        .trim()
+        .lowercase()
+        .required()
+        .messages({
+            'string.email': 'Informe um email válido',
+            'string.empty': 'O email é obrigatório.',
+            'any.required': 'O email é obrigatório.'
+        })
+}).unknown(false);
+
+// Define as regras para criar a nova senha a partir do link recebido
+const redefinirSenhaSchema = Joi.object({
+    token: Joi.string()
+        .hex()
+        .length(64)
+        .required()
+        .messages({
+            'string.hex': 'Link de recuperação inválido.',
+            'string.length': 'Link de recuperação inválido.',
+            'string.empty': 'Link de recuperação inválido.',
+            'any.required': 'Link de recuperação inválido.'
+        }),
+
+    senha: Joi.string()
+        .min(8)
+        .required()
+        .messages({
+            'string.min': 'A senha deve ter pelo menos 8 caracteres.',
+            'string.empty': 'A senha é obrigatória.',
+            'any.required': 'A senha é obrigatória.'
+        })
+}).unknown(false);
+
 // Exporta o Schema para utiulização no Controller
 module.exports = {
     cadastroSchema,
-    loginSchema
+    loginSchema,
+    esqueciSenhaSchema,
+    redefinirSenhaSchema
 };

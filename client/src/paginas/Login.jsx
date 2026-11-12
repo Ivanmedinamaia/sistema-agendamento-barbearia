@@ -37,6 +37,7 @@ export default function Login() {
             <p className="texto-suave">Acesse sua conta para agendar e acompanhar seus horários.</p>
 
             <div className="cartao">
+                <Aviso tipo="sucesso">{location.state?.aviso}</Aviso>
                 <Aviso tipo="info">{avisoSessao}</Aviso>
                 <Aviso tipo="erro">{erro}</Aviso>
 
@@ -63,6 +64,7 @@ export default function Login() {
                             value={senha}
                             onChange={(e) => setSenha(e.target.value)}
                         />
+                        <Link to="/esqueci-senha" className="campo-ajuda">Esqueci minha senha</Link>
                     </div>
 
                     <button type="submit" className="botao botao-largo" disabled={enviando}>
